@@ -1,4 +1,4 @@
-# grp
+# Pyhttp
 Pyhttp is an http server written from scratch in python to understand the http protocol .As of now what pyhttp does is:-
 
 - Supports GET , HEAD , DELETE
