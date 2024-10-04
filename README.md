@@ -5,6 +5,7 @@ Pyhttp is an http server written from scratch in python to understand the http p
 - Supports status codes 200 , 400 , 501
 - Capability of handling multiple conections
 - Renders images and videos in the browser
+- Allows the usage of cookies
 
 ## Getting Started
 
@@ -25,7 +26,7 @@ To compile and run the program, follow these steps:
 - Adding the http access control
 - Adding the http authentication
 - Adding the http caching
-- Adding the http cookies
+- [x] Adding the http cookies
 - Last but not the least,if everything goes well, i also want to build a framework on top of it. Something similar to [aiohttp](https://github.com/aio-libs/aiohttp) 
 
 ## Contributing
