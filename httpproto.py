@@ -1,11 +1,10 @@
 import socket
 import threading
-import os
+import os,sys
 import signal
 import mimetypes
 import logging
-import json
-import cgi
+import json,time
 from datetime import date
 class TcpServer:
 	host='127.0.0.1'
@@ -35,6 +34,7 @@ class TcpServer:
 				t.join()
 	def handle_client(self,conn,addr):
 		data=conn.recv(1024)
+		print(data)
 		response=self.handle_request(data)
 		conn.sendall(response)
 		conn.close()
@@ -49,12 +49,16 @@ class HttpServer(TcpServer):
 		'Content-Type':'text/html ',
 		'Server':'First server ',
 		'Date'  :str(date.today()),
-		'Content-length':''
+		'Last-Modified':'',
+		'Content-length':'',
+		'Set-Cookie':'',
+		'Cache-Control':''
 		}
 	status_codes={
 			200:'Ok \n',
 			404:'Not found \n',
-			501:'Not implemented \n'
+			501:'Not implemented \n',
+			304:'Not Modified '
 		}
 	def __init__(self):
 		self.uri=None
@@ -102,12 +106,20 @@ class HttpServer(TcpServer):
 			stscds=self.get_codes(200)
 			body=b'<h1>Happy hacking</h1>'
 			return b"".join([stscds,head,blank_line,body])
+		
+		elif res==b'Cache handled':
+			head=self.get_headers(self.headers)
+			stscds=self.get_codes(304)
+			return b"".join([stscds,head.encode(),blank_line])
+
 
             
 		else:
 			self.logger.addHandler(self.evnt_logger)
 			self.logger.info("Connected to"+" "+f"{self.addr}"+"and page "+" "+f"{self.uri}"+"requested")
 			head=self.get_headers(self.headers)
+			self.setCookie(key='sessionId', value='3xhggd', expires='Sat, 05-Oct-2024 07:28:00 GMT', path='/', httpOnly=True)
+			self.setCache(type='public',maxage=3600,nocache='no-cache',mustrevalid='must-revalidate')
 			stscds=self.get_codes(200)
 			return b"".join([stscds,head.encode(),blank_line,res])
 	
@@ -115,6 +127,13 @@ class HttpServer(TcpServer):
 	def parse(self,data):
 		lines=data.split(b"\r\n")
 		reqline=lines[0]
+		cacheline=lines[2]
+		if b'If-Modified-Since' in cacheline:
+
+			moddate=cacheline[b'If-Modified-Since'].decode()
+			if moddate==self.headers['Last-Modified']:
+				return b'Cache handled'
+
 		self.method=reqline.decode().split(' ')[0]
 		if self.method!='GET' and self.method!='DELETE' and self.method!='POST'  and self.method!='HEAD':
 			return b'Not operatable'
@@ -123,6 +142,7 @@ class HttpServer(TcpServer):
 			return b'Deleted'
 		elif self.method=='HEAD':
 			return b'return head'
+		
 		elif self.method=='POST':
 			self.handle_POST(reqline)
 			return b'Form post done'
@@ -130,8 +150,6 @@ class HttpServer(TcpServer):
 		response=self.handle_GET(reqline)
 		return response
 		
-	    
-    
 
 	def handle_DELETE(self,reqline):
 		body=b''
@@ -147,7 +165,10 @@ class HttpServer(TcpServer):
 		end=reqline.decode().find(' ',start)
 		self.uri=reqline[start:end].decode()
 		if os.path.exists(self.uri) and not os.path.isdir(self.uri):
-			with open(self.uri,'rb')as r:    	
+			with open(self.uri,'rb')as r:
+				last_modified_time = os.path.getmtime(self.uri)  # Get the last modified time in seconds since the epoch
+				last_modified_date ={'Last-Modified':time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(last_modified_time)) }
+				self.headers.update(last_modified_date)    	
 				body=r.read()
 		return body
 
@@ -165,6 +186,51 @@ class HttpServer(TcpServer):
 		msg=self.status_codes[code]
 		msgresponse='HTTP/1.1 %s %s \r \n'%(code,msg)
 		return msgresponse.encode()
+	
+	def setCookie(self,key,value,maxage=None,expires=None,path='/',domain=None,secure=None,httpOnly=False):
+		cookies=[]
+		cookies.append(f'{key}={value}')
+		if maxage is not None:
+			cookies.append(f'{maxage}')
+		
+		if expires is not None:
+			cookies.append(f'{expires}')
+		
+		cookies.append(f'{path}')
+		
+		if domain is not None:
+			cookies.append(f'{domain}')
+		
+		if secure is not None:
+			cookies.append('secure')
+
+		if httpOnly is not False:
+			cookies.append('httpOnly')
+		
+		cookiestr=';'.join(cookies)
+
+		self.headers['Set-Cookie']=cookiestr
+
+	def setCache(self,type=None,maxage=None,nocache=None,nostore=None,mustrevalid=None,proxyrevalid=None):
+		cachelist=[]
+		if type=='private' or type=='public':
+			cachelist.append(type)
+		if maxage is not None:
+			cachelist.append(f'max-age={maxage}')
+		if nocache=='no-cache':
+			cachelist.append(nocache)
+		if nostore=='no-store':
+			cachelist.append(nostore)
+
+		if mustrevalid=='must-revalidate':
+			cachelist.append(mustrevalid)
+		if proxyrevalid=='proxy-revalidate':
+			cachelist.append(proxyrevalid)
+		cachestr=','.join(cachelist)
+		self.headers['Cache-Control']=cachestr
+	
+	
+
 		
 if __name__ == '__main__':
 	server=HttpServer()
