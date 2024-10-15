@@ -34,7 +34,6 @@ class TcpServer:
 				t.join()
 	def handle_client(self,conn,addr):
 		data=conn.recv(1024)
-		print(data)
 		response=self.handle_request(data)
 		conn.sendall(response)
 		conn.close()
@@ -119,7 +118,7 @@ class HttpServer(TcpServer):
 			self.logger.info("Connected to"+" "+f"{self.addr}"+"and page "+" "+f"{self.uri}"+"requested")
 			head=self.get_headers(self.headers)
 			self.setCookie(key='sessionId', value='3xhggd', expires='Sat, 05-Oct-2024 07:28:00 GMT', path='/', httpOnly=True)
-			self.setCache(type='public',maxage=3600,nocache='no-cache',mustrevalid='must-revalidate')
+			self.setCache(type='public',maxage=60,nocache='no-cache',mustrevalid='must-revalidate')
 			stscds=self.get_codes(200)
 			return b"".join([stscds,head.encode(),blank_line,res])
 	
@@ -127,12 +126,15 @@ class HttpServer(TcpServer):
 	def parse(self,data):
 		lines=data.split(b"\r\n")
 		reqline=lines[0]
-		cacheline=lines[2]
-		if b'If-Modified-Since' in cacheline:
-
-			moddate=cacheline[b'If-Modified-Since'].decode()
-			if moddate==self.headers['Last-Modified']:
-				return b'Cache handled'
+		for line in lines:
+			if b'If-Modified-Since' in line:
+				start=reqline.decode().find('/')+1
+				end=reqline.decode().find(' ',start)
+				uri=reqline[start:end].decode()
+				timemod=time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(os.path.getmtime(uri)))
+				if timemod==self.headers['Last-Modified']:
+					return b'Cache handled'
+		
 
 		self.method=reqline.decode().split(' ')[0]
 		if self.method!='GET' and self.method!='DELETE' and self.method!='POST'  and self.method!='HEAD':
@@ -164,10 +166,12 @@ class HttpServer(TcpServer):
 		start=reqline.decode().find('/')+1
 		end=reqline.decode().find(' ',start)
 		self.uri=reqline[start:end].decode()
+		
 		if os.path.exists(self.uri) and not os.path.isdir(self.uri):
 			with open(self.uri,'rb')as r:
 				last_modified_time = os.path.getmtime(self.uri)  # Get the last modified time in seconds since the epoch
 				last_modified_date ={'Last-Modified':time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(last_modified_time)) }
+				
 				self.headers.update(last_modified_date)    	
 				body=r.read()
 		return body
